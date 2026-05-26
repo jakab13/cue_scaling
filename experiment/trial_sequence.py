@@ -30,10 +30,10 @@ class ConditionSpec:
 
     condition_id: str
 
-    standard_cue: str
-    standard_center_frequency: float
-    standard_angle: float | None = None
-    standard_value: float | dict | None = None
+    reference_cue: str
+    reference_center_frequency: float
+    reference_angle: float | None = None
+    reference_value: float | dict | None = None
 
     comparison_cue: str = None
     comparison_center_frequency: float = None
@@ -82,12 +82,12 @@ class PlannedTrial:
 
 
 def make_trial_spec(
-    standard_cue,
+    reference_cue,
     comparison_cue,
-    standard_center_frequency,
+    reference_center_frequency,
     comparison_center_frequency,
-    standard_angle=None,
-    standard_value=None,
+    reference_angle=None,
+    reference_value=None,
     comparison_angle=None,
     comparison_value=None,
     duration=0.3,
@@ -100,12 +100,12 @@ def make_trial_spec(
     Create one TrialSpec for a 2AFC presentation.
     """
 
-    standard = StimulusSpec(
-        label="standard",
-        cue=standard_cue,
-        center_frequency=standard_center_frequency,
-        angle=standard_angle,
-        value=standard_value,
+    reference = StimulusSpec(
+        label="reference",
+        cue=reference_cue,
+        center_frequency=reference_center_frequency,
+        angle=reference_angle,
+        value=reference_value,
     )
 
     comparison = StimulusSpec(
@@ -117,7 +117,7 @@ def make_trial_spec(
     )
 
     trial_spec = TrialSpec(
-        standard=standard,
+        reference=reference,
         comparison=comparison,
         duration=duration,
         samplerate=samplerate,
@@ -310,17 +310,17 @@ def build_condition_trials(condition, start_index=0):
 
     For each comparison angle, the trial is repeated n_repetitions times.
     If mirror_trials=True, approximately half of the repetitions are mirrored
-    around the midline by multiplying both standard and comparison angles by -1.
+    around the midline by multiplying both reference and comparison angles by -1.
 
     Example:
-    standard = 8, comparison = 20
-    mirrored version: standard = -8, comparison = -20
+    reference = 8, comparison = 20
+    mirrored version: reference = -8, comparison = -20
     """
 
     planned_trials = []
     trial_index = start_index
 
-    trial_type = f"{condition.standard_cue}-->{condition.comparison_cue}"
+    trial_type = f"{condition.reference_cue}-->{condition.comparison_cue}"
     comparison_plan = get_comparison_plan(condition)
 
     for comparison_index, comparison_item in enumerate(comparison_plan):
@@ -334,21 +334,21 @@ def build_condition_trials(condition, start_index=0):
 
         for repetition, mirrored in enumerate(mirror_flags):
 
-            standard_angle = condition.standard_angle
-            standard_value = condition.standard_value
+            reference_angle = condition.reference_angle
+            reference_value = condition.reference_value
 
             comparison_angle = comparison_item["comparison_angle"]
             comparison_value = comparison_item["comparison_value"]
 
             if condition.mirror_trials and mirrored:
-                standard_angle = (
-                    -standard_angle
-                    if standard_angle is not None
+                reference_angle = (
+                    -reference_angle
+                    if reference_angle is not None
                     else None
                 )
 
-                if standard_value is not None:
-                    standard_value = -standard_value
+                if reference_value is not None:
+                    reference_value = -reference_value
 
                 comparison_angle = (
                     -comparison_angle
@@ -360,12 +360,12 @@ def build_condition_trials(condition, start_index=0):
                     comparison_value = -comparison_value
 
             trial_spec = make_trial_spec(
-                standard_cue=condition.standard_cue,
+                reference_cue=condition.reference_cue,
                 comparison_cue=condition.comparison_cue,
-                standard_center_frequency=condition.standard_center_frequency,
+                reference_center_frequency=condition.reference_center_frequency,
                 comparison_center_frequency=condition.comparison_center_frequency,
-                standard_angle=standard_angle,
-                standard_value=standard_value,
+                reference_angle=reference_angle,
+                reference_value=reference_value,
                 comparison_angle=comparison_angle,
                 comparison_value=comparison_value,
                 duration=condition.duration,

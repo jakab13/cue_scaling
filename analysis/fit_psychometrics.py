@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import psignifit as ps
 import psignifit.psigniplot as psp
 
+from stimuli.sound_handler import angle_to_cue_value
+
 
 # ---------------------------------------------------------------------
 # Basic utilities
@@ -25,12 +27,197 @@ def safe_name(value):
     return value.strip("_")
 
 
+def get_value_unit(cue):
+    """
+    Return the physical unit of a cue value.
+    """
+    cue = str(cue).upper()
+
+    if cue == "ILD":
+        return "dB"
+
+    if cue == "ITD":
+        return "s"
+
+    if cue == "COMBINED":
+        return "ITD_s;ILD_dB"
+
+    return "unknown"
+
+
+def format_number(value):
+    """
+    Format numbers compactly for filenames.
+
+    Examples
+    --------
+    15.0 -> "15"
+    2.5  -> "2p5"
+    """
+    if value is None:
+        return "NA"
+
+    value = float(value)
+
+    if value.is_integer():
+        return str(int(value))
+
+    return str(value).replace(".", "p").replace("-", "m")
+
+
+
+def make_fit_name(group_info):
+    """
+    Create a human-readable filename stem for one psychometric fit.
+
+    Examples
+    --------
+    itd-to-ild_1400Hz_ref15deg
+    itd-to-ild_500to1400Hz_ref15deg
+    """
+
+    reference_cue = str(group_info.get("reference_cue", "ref")).lower()
+    comparison_cue = str(group_info.get("comparison_cue", "cmp")).lower()
+
+    reference_freq = format_number(group_info.get("reference_center_frequency"))
+    comparison_freq = format_number(
+        group_info.get(
+            "comparison_center_frequency",
+            group_info.get("reference_center_frequency"),
+        )
+    )
+
+    reference_angle = format_number(group_info.get("reference_angle_abs"))
+
+    cue_pair = f"{reference_cue}-to-{comparison_cue}"
+
+    if reference_freq == comparison_freq:
+        freq_label = f"{reference_freq}Hz"
+    else:
+        freq_label = f"{reference_freq}to{comparison_freq}Hz"
+
+    ref_label = f"ref{reference_angle}deg"
+
+    return safe_name(f"{cue_pair}_{freq_label}_{ref_label}")
+
+
+def make_psychometric_paths(root, group_info):
+    """
+    Create paths for the fit JSON and diagnostic figure.
+
+    Structure:
+        root/fits/subject_id/<fit_name>.json
+        root/figures/subject_id/<fit_name>.png
+    """
+
+    root = Path(root)
+
+    subject_id = safe_name(group_info.get("subject_id", "unknown_subject"))
+    fit_name = make_fit_name(group_info)
+
+    fit_dir = root / "fits" / subject_id
+    figure_dir = root / "figures" / subject_id
+
+    fit_dir.mkdir(parents=True, exist_ok=True)
+    figure_dir.mkdir(parents=True, exist_ok=True)
+
+    json_path = fit_dir / f"{fit_name}.json"
+    fig_path = figure_dir / f"{fit_name}.png"
+
+    return json_path, fig_path, fit_name
+
+
 def make_hash(payload):
     """
     Create a stable hash from dictionaries/lists/numpy-like data.
     """
     payload_json = json.dumps(payload, sort_keys=True, default=str)
     return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()[:12]
+
+
+def convert_fit_angles_to_values(
+    fit_summary,
+    group_info,
+    head_radius=8.75,
+):
+    """
+    Convert angle-based fit parameters into comparison-cue signal values.
+
+    The psychometric fit is performed in comparison-angle coordinates.
+    This function adds equivalent cue-value parameters for the comparison cue.
+
+    For ILD:
+        angle -> dB
+
+    For ITD:
+        angle -> seconds
+
+    For COMBINED:
+        angle -> dict with ITD and ILD values
+    """
+
+    comparison_cue = group_info.get("comparison_cue")
+    comparison_frequency = group_info.get("comparison_center_frequency")
+
+    pse_angle = fit_summary.get("PSE_angle", fit_summary.get("PSE"))
+    threshold_84_angle = fit_summary.get(
+        "threshold_84_angle",
+        fit_summary.get("threshold_84"),
+    )
+
+    if pse_angle is None or np.isnan(pse_angle):
+        return {
+            "PSE_value": np.nan,
+            "threshold_84_value": np.nan,
+            "JND_84_value": np.nan,
+            "PSE_value_unit": get_value_unit(comparison_cue),
+        }
+
+    if threshold_84_angle is None or np.isnan(threshold_84_angle):
+        threshold_84_value = np.nan
+    else:
+        threshold_84_value = angle_to_cue_value(
+            cue=comparison_cue,
+            angle=threshold_84_angle,
+            center_frequency=comparison_frequency,
+            head_radius=head_radius,
+        )
+
+    pse_value = angle_to_cue_value(
+        cue=comparison_cue,
+        angle=pse_angle,
+        center_frequency=comparison_frequency,
+        head_radius=head_radius,
+    )
+
+    # For scalar cues, compute value-space JND directly.
+    if isinstance(pse_value, dict):
+        value_summary = {}
+
+        for key in pse_value:
+            value_summary[f"PSE_{key}_value"] = pse_value[key]
+
+            if isinstance(threshold_84_value, dict):
+                value_summary[f"threshold_84_{key}_value"] = threshold_84_value[key]
+                value_summary[f"JND_84_{key}_value"] = (
+                    threshold_84_value[key] - pse_value[key]
+                )
+            else:
+                value_summary[f"threshold_84_{key}_value"] = np.nan
+                value_summary[f"JND_84_{key}_value"] = np.nan
+
+        value_summary["PSE_value_unit"] = get_value_unit(comparison_cue)
+        return value_summary
+
+    else:
+        jnd_84_value = threshold_84_value - pse_value
+
+        return {
+            "PSE_value": pse_value,
+            "threshold_84_value": threshold_84_value,
+            "JND_84_value": jnd_84_value,
+            "PSE_value_unit": get_value_unit(comparison_cue),
+        }
 
 
 def load_run_csv(path):
@@ -51,39 +238,59 @@ def load_run_csv(path):
     return df
 
 
+def load_run_files(csv_paths):
+    """
+    Load and concatenate multiple run CSV files.
+    Adds a source_file column so each trial can still be traced back.
+    """
+
+    dfs = []
+
+    for path in csv_paths:
+        path = Path(path)
+        df = load_run_csv(path)
+        df["source_file"] = str(path)
+        dfs.append(df)
+
+    if not dfs:
+        raise ValueError("No CSV files provided.")
+
+    return pd.concat(dfs, ignore_index=True)
+
+
 def add_folded_coordinates(
     df,
-    standard_angle_col="standard_angle",
+    reference_angle_col="reference_angle",
     comparison_angle_col="comparison_angle",
 ):
     """
-    Add folded standard/comparison angles.
+    Add folded reference/comparison angles.
 
     Mirrored trials are folded around the midline, assuming no left-right bias.
 
     Example:
-        standard_angle = -8, comparison_angle = -20
-        folded_standard_angle = 8
+        reference_angle = -8, comparison_angle = -20
+        folded_reference_angle = 8
         folded_comparison_angle = 20
     """
 
     df = df.copy()
 
-    if standard_angle_col not in df.columns:
-        raise ValueError(f"Missing column: {standard_angle_col}")
+    if reference_angle_col not in df.columns:
+        raise ValueError(f"Missing column: {reference_angle_col}")
 
     if comparison_angle_col not in df.columns:
         raise ValueError(f"Missing column: {comparison_angle_col}")
 
-    standard_angle = df[standard_angle_col].astype(float)
+    reference_angle = df[reference_angle_col].astype(float)
     comparison_angle = df[comparison_angle_col].astype(float)
 
-    # Use standard sign for folding.
-    # If standard is exactly 0, default to +1.
-    fold_sign = np.sign(standard_angle)
+    # Use reference sign for folding.
+    # If reference is exactly 0, default to +1.
+    fold_sign = np.sign(reference_angle)
     fold_sign = fold_sign.replace(0, 1)
 
-    df["standard_angle_abs"] = standard_angle.abs()
+    df["reference_angle_abs"] = reference_angle.abs()
     df["comparison_angle_folded"] = comparison_angle * fold_sign
 
     return df
@@ -94,17 +301,17 @@ def add_comparison_right_response(df):
     Add binary response columns for psychometric fitting.
 
     comparison_right:
-        1 = participant judged comparison further right than standard
+        1 = participant judged comparison further right than reference
             in physical signed coordinates.
 
     comparison_right_folded:
-        same response, but folded into the positive-standard coordinate system.
+        same response, but folded into the positive-reference coordinate system.
         This is the variable to use when fitting against comparison_angle_folded.
     """
 
     df = df.copy()
 
-    required_cols = ["response", "first", "second", "standard_angle"]
+    required_cols = ["response", "first", "second", "reference_angle"]
     missing = [col for col in required_cols if col not in df.columns]
 
     if missing:
@@ -127,24 +334,24 @@ def add_comparison_right_response(df):
             judged_rightward = first
             judged_leftward = second
 
-        if judged_rightward == "comparison" and judged_leftward == "standard":
+        if judged_rightward == "comparison" and judged_leftward == "reference":
             return 1
 
-        if judged_rightward == "standard" and judged_leftward == "comparison":
+        if judged_rightward == "reference" and judged_leftward == "comparison":
             return 0
 
         return None
 
     df["comparison_right"] = df.apply(recode, axis=1)
 
-    # Fold responses whenever the standard was presented on the negative side.
+    # Fold responses whenever the reference was presented on the negative side.
     # This matches the folding of comparison angles.
-    negative_standard = df["standard_angle"].astype(float) < 0
+    negative_reference = df["reference_angle"].astype(float) < 0
 
     df["comparison_right_folded"] = df["comparison_right"]
 
-    df.loc[negative_standard, "comparison_right_folded"] = (
-        1 - df.loc[negative_standard, "comparison_right"]
+    df.loc[negative_reference, "comparison_right_folded"] = (
+        1 - df.loc[negative_reference, "comparison_right"]
     )
 
     return df
@@ -152,10 +359,9 @@ def add_comparison_right_response(df):
 
 DEFAULT_GROUP_COLS = [
     "subject_id",
-    "condition_id",
-    "standard_cue",
-    "standard_angle_abs",
-    "standard_center_frequency",
+    "reference_cue",
+    "reference_angle_abs",
+    "reference_center_frequency",
     "comparison_cue",
     "comparison_center_frequency",
 ]
@@ -257,10 +463,56 @@ def make_psignifit_data(
     return data, grouped
 
 
+def get_cached_fit_info(summary_path, subject_id, fit_name, data_hash):
+    """
+    Check whether a valid cached fit exists in psychometric_summary.csv.
+
+    Returns the matching summary row if:
+        - subject_id matches
+        - fit_name matches
+        - data_hash matches
+        - fit_json exists
+
+    Otherwise returns None.
+    """
+
+    summary_path = Path(summary_path)
+
+    if not summary_path.exists():
+        return None
+
+    summary = pd.read_csv(summary_path)
+
+    required_cols = {"subject_id", "fit_name", "data_hash", "fit_json"}
+
+    if not required_cols.issubset(summary.columns):
+        return None
+
+    matches = summary[
+        (summary["subject_id"].astype(str) == str(subject_id))
+        & (summary["fit_name"].astype(str) == str(fit_name))
+        & (summary["data_hash"].astype(str) == str(data_hash))
+    ]
+
+    if matches.empty:
+        return None
+
+    row = matches.iloc[-1]
+
+    fit_json = Path(row["fit_json"])
+
+    if not fit_json.exists():
+        return None
+
+    return row
+
+
 def fit_or_load_psychometric(
     data,
     group_info,
-    output_dir,
+    json_path,
+    summary_path,
+    fit_name,
     sigmoid="norm",
     experiment_type="yes/no",
     overwrite=False,
@@ -268,14 +520,11 @@ def fit_or_load_psychometric(
     """
     Fit one psychometric function or load an existing cached fit.
 
-    The cache hash depends on:
-        - grouped psignifit data
-        - group metadata
-        - fit options
-    """
+    Cache identity is stored in psychometric_summary.csv using:
+        subject_id + fit_name + data_hash
 
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    The psignifit JSON filename remains human-readable.
+    """
 
     fit_options = {
         "sigmoid": sigmoid,
@@ -288,25 +537,33 @@ def fit_or_load_psychometric(
         "fit_options": fit_options,
     }
 
-    fit_hash = make_hash(cache_payload)
+    data_hash = make_hash(cache_payload)
 
-    json_path = output_dir / f"fit_{fit_hash}.json"
-    fig_path = output_dir / f"fit_{fit_hash}.png"
+    subject_id = group_info.get("subject_id", "unknown_subject")
 
-    if json_path.exists() and not overwrite:
-        result = ps.Result.load_json(json_path)
-        fit_was_loaded = True
-    else:
-        result = ps.psignifit(
-            data,
-            sigmoid=sigmoid,
-            experiment_type=experiment_type,
+    if not overwrite:
+        cached = get_cached_fit_info(
+            summary_path=summary_path,
+            subject_id=subject_id,
+            fit_name=fit_name,
+            data_hash=data_hash,
         )
-        result.save_json(json_path)
-        fit_was_loaded = False
 
-    return result, json_path, fig_path, fit_hash, fit_was_loaded
+        if cached is not None:
+            result = ps.Result.load_json(cached["fit_json"])
+            return result, data_hash, True
 
+    result = ps.psignifit(
+        data,
+        sigmoid=sigmoid,
+        experiment_type=experiment_type,
+    )
+
+    json_path = Path(json_path)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    result.save_json(json_path)
+
+    return result, data_hash, False
 
 def extract_fit_summary(result):
     """
@@ -331,9 +588,9 @@ def extract_fit_summary(result):
     jnd_84 = threshold_84 - pse_50
 
     summary = {
-        "PSE": pse,
-        "JND_84": jnd_84,
-        "threshold_84": threshold_84,
+        "PSE_angle": pse_50,
+        "JND_84_angle": jnd_84,
+        "threshold_84_angle": threshold_84,
         "width": width,
         "lambda": lapse,
         "gamma": gamma,
@@ -370,9 +627,12 @@ def save_psychometric_figure(
     fig_path,
     title=None,
     x_label="Folded comparison angle (deg)",
+    reference_x=None,
 ):
     """
     Save a psychometric fit figure.
+
+    Optionally adds a vertical line showing the reference/reference location.
     """
 
     fig, ax = plt.subplots(figsize=(5, 4))
@@ -381,74 +641,62 @@ def save_psychometric_figure(
         result,
         ax=ax,
         x_label=x_label,
-        y_label="p('further right')",
+        y_label="p('comparison further right')",
     )
+
+    if reference_x is not None:
+        ax.vlines(
+            x=reference_x,
+            ymin=0,
+            ymax=0.5,
+            linestyles="--",
+            linewidth=1.5,
+            alpha=0.5,
+            label="ref"
+        )
+
+        ax.legend(loc="upper left")
 
     if title is not None:
         ax.set_title(title)
 
     fig.tight_layout()
     fig.savefig(fig_path, dpi=300)
-    # plt.close(fig)
+    # plt.show(block=False)
+    plt.close(fig)
 
 
-def make_group_output_dir(root, group_info):
-    """
-    Create a smart output folder for one psychometric group.
-    """
-
-    subject = safe_name(group_info.get("subject_id", "unknown_subject"))
-    condition = safe_name(group_info.get("condition_id", "condition"))
-
-    std_cue = safe_name(group_info.get("standard_cue", "std"))
-    cmp_cue = safe_name(group_info.get("comparison_cue", "cmp"))
-
-    std_angle = group_info.get("standard_angle_abs", "angle")
-    std_freq = group_info.get("standard_center_frequency", "freq")
-    cmp_freq = group_info.get("comparison_center_frequency", std_freq)
-
-    folder_name = safe_name(
-        f"{condition}_{std_cue}{std_angle}deg_{cmp_cue}_{std_freq}to{cmp_freq}Hz"
-    )
-
-    return Path(root) / "fits" / subject / folder_name
-
-
-def fit_run_file(
-    csv_path,
+def fit_dataframe(
+    df,
     derivatives_root="data/psychometrics",
     group_cols=None,
     x_col="comparison_angle_folded",
     sigmoid="norm",
     experiment_type="yes/no",
     overwrite=False,
+    analysis_label="combined",
 ):
     """
-    Fit all psychometric functions contained in one run CSV.
+    Fit psychometric functions from a trial-level dataframe.
 
-    Returns
-    -------
-    summary_df : pandas.DataFrame
-        One row per psychometric fit.
+    This can contain trials from one run or many runs.
     """
 
-    csv_path = Path(csv_path)
     derivatives_root = Path(derivatives_root)
 
-    df = load_run_csv(csv_path)
+    summary_path = derivatives_root / "psychometric_summary.csv"
 
-    # Adapt this column name if your current output uses comparison_design_angle.
     if "comparison_angle_folded" not in df.columns:
         if "comparison_angle" in df.columns:
             df = add_folded_coordinates(
                 df,
-                standard_angle_col="standard_angle",
+                reference_angle_col="reference_angle",
                 comparison_angle_col="comparison_angle",
             )
         elif "comparison_design_angle" in df.columns:
             df = add_folded_coordinates(
                 df,
-                standard_angle_col="standard_angle",
+                reference_angle_col="reference_angle",
                 comparison_angle_col="comparison_design_angle",
             )
         else:
@@ -467,53 +715,72 @@ def fit_run_file(
             group_df,
             x_col=x_col,
             response_col="comparison_right_folded",
+            bin_col="comparison_index",
         )
 
         if len(data) < 3:
             print(f"Skipping group with <3 stimulus levels: {group_info}")
             continue
 
-        group_dir = make_group_output_dir(
+        json_path, fig_path, fit_name = make_psychometric_paths(
             root=derivatives_root,
             group_info=group_info,
         )
 
-        result, json_path, fig_path, fit_hash, loaded = fit_or_load_psychometric(
+        result, data_hash, loaded = fit_or_load_psychometric(
             data=data,
             group_info=group_info,
-            output_dir=group_dir,
+            json_path=json_path,
+            summary_path=summary_path,
+            fit_name=fit_name,
             sigmoid=sigmoid,
             experiment_type=experiment_type,
             overwrite=overwrite,
         )
 
         title = (
-            f"{group_info.get('condition_id', '')}\n"
-            f"{group_info.get('standard_cue', '')} std "
-            f"{group_info.get('standard_angle_abs', '')}° → "
-            f"{group_info.get('comparison_cue', '')}"
+            f"{group_info.get('reference_cue', '')} reference "
+            f"{group_info.get('reference_angle_abs', '')}° → "
+            f"{group_info.get('comparison_cue', '')}\n"
+            f"{group_info.get('reference_center_frequency', '')} Hz"
         )
 
-        if overwrite or not fig_path.exists():
+        if overwrite or not fig_path.exists() or not loaded:
             save_psychometric_figure(
                 result=result,
                 fig_path=fig_path,
                 title=title,
                 x_label="Comparison angle (deg)",
+                reference_x=group_info.get("reference_angle_abs"),
             )
 
         fit_summary = extract_fit_summary(result)
 
+        value_summary = convert_fit_angles_to_values(
+            fit_summary=fit_summary,
+            group_info=group_info,
+        )
+
+        source_files = (
+            sorted(group_df["source_file"].unique().tolist())
+            if "source_file" in group_df.columns
+            else []
+        )
+
         row = {
-            "source_file": str(csv_path),
-            "fit_hash": fit_hash,
+            "fit_name": fit_name,
+            "data_hash": data_hash,
+            "analysis_label": analysis_label,
             "fit_json": str(json_path),
             "fit_figure": str(fig_path),
             "fit_loaded_from_cache": loaded,
             "n_trials": int(data[:, 2].sum()),
             "n_levels": int(len(data)),
+            "n_source_files": len(source_files),
+            "source_files": ";".join(source_files),
             **group_info,
             **fit_summary,
+            **value_summary,
         }
 
         summary_rows.append(row)
@@ -526,7 +793,11 @@ def fit_run_file(
     if summary_path.exists() and not overwrite:
         old = pd.read_csv(summary_path)
         combined = pd.concat([old, summary_df], ignore_index=True)
-        combined = combined.drop_duplicates(subset=["fit_hash"], keep="last")
+
+        combined = combined.drop_duplicates(
+            subset=["subject_id", "fit_name"],
+            keep="last",
+        )
     else:
         combined = summary_df
 
@@ -534,6 +805,62 @@ def fit_run_file(
 
     return summary_df
 
+
+def fit_run_file(
+    csv_path,
+    derivatives_root="data/psychometrics",
+    group_cols=None,
+    x_col="comparison_angle_folded",
+    sigmoid="norm",
+    experiment_type="yes/no",
+    overwrite=False,
+):
+    """
+    Fit psychometric functions from one run CSV.
+    """
+
+    csv_path = Path(csv_path)
+    df = load_run_files([csv_path])
+
+    return fit_dataframe(
+        df=df,
+        derivatives_root=derivatives_root,
+        group_cols=group_cols,
+        x_col=x_col,
+        sigmoid=sigmoid,
+        experiment_type=experiment_type,
+        overwrite=overwrite,
+        analysis_label=csv_path.stem,
+    )
+
+
+def fit_run_files(
+    csv_paths,
+    derivatives_root="data/psychometrics",
+    group_cols=None,
+    x_col="comparison_angle_folded",
+    sigmoid="norm",
+    experiment_type="yes/no",
+    overwrite=False,
+    analysis_label="combined_runs",
+):
+    """
+    Fit psychometric functions from multiple run CSV files.
+    Trials belonging to the same psychometric group are pooled.
+    """
+
+    df = load_run_files(csv_paths)
+
+    return fit_dataframe(
+        df=df,
+        derivatives_root=derivatives_root,
+        group_cols=group_cols,
+        x_col=x_col,
+        sigmoid=sigmoid,
+        experiment_type=experiment_type,
+        overwrite=overwrite,
+        analysis_label=analysis_label,
+    )
 
 # if __name__ == "__main__":
 #
@@ -547,8 +874,8 @@ def fit_run_file(
 #
 #     print(summary[[
 #         "condition_id",
-#         "standard_cue",
-#         "standard_angle_abs",
+#         "reference_cue",
+#         "reference_angle_abs",
 #         "comparison_cue",
 #         "PSE",
 #         "JND_84",

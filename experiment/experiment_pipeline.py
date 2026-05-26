@@ -5,25 +5,48 @@ import pandas as pd
 
 from experiment.trial_sequence import build_run_sequence
 from experiment.run_experiment import run_experiment
-from analysis.fit_psychometrics import fit_run_file
+from analysis.fit_psychometrics import fit_run_file, fit_run_files
 
 
-def run_and_fit_experiment(
+def run_experiment_from_conditions(
     subject_id,
     conditions,
-    run_label="run",
     save_root="data/raw",
-    derivatives_root="data/psychometrics",
     randomize=True,
     seed=None,
     left_key="1",
     right_key="2",
-    fit_after_run=True,
-    overwrite_fit=False,
 ):
     """
-    Build a run sequence, run the experiment, save one CSV file,
-    and optionally fit psychometric functions immediately afterwards.
+    Build a trial sequence from ConditionSpec objects and run the experiment.
+
+    This function only runs the experiment and saves one raw CSV file.
+    It does not fit or plot anything.
+
+    Parameters
+    ----------
+    subject_id : str
+        Participant identifier.
+
+    conditions : list
+        List of ConditionSpec objects.
+
+    save_root : str
+        Root directory for raw data.
+
+    randomize : bool
+        Whether to randomize trial order.
+
+    seed : int or None
+        Random seed for trial randomization.
+
+    left_key, right_key : str
+        Response keys.
+
+    Returns
+    -------
+    csv_path : Path or None
+        Path to the saved raw data file, or None if the run was cancelled.
     """
 
     run_trials = build_run_sequence(
@@ -33,48 +56,204 @@ def run_and_fit_experiment(
     )
 
     print("\nPrepared run")
-    print("-" * 40)
+    print("-" * 50)
     print(f"Subject ID: {subject_id}")
-    print(f"Run label:  {run_label}")
     print(f"Conditions: {[c.condition_id for c in conditions]}")
-    print(f"Trials:     {len(run_trials)}")
-    print("-" * 40)
+    print(f"Number of trials: {len(run_trials)}")
+    print("-" * 50)
 
     csv_path = run_experiment(
         subject_id=subject_id,
         run_trials=run_trials,
         save_root=save_root,
-        run_label=run_label,
         left_key=left_key,
         right_key=right_key,
     )
 
-    if csv_path is None:
-        print("No data file created. Skipping analysis.")
-        return None, None
+    return csv_path
 
-    if fit_after_run:
-        print("\nFitting psychometric functions...")
-        summary = fit_run_file(
-            csv_path=csv_path,
-            derivatives_root=derivatives_root,
-            sigmoid="norm",
-            experiment_type="yes/no",
-            overwrite=overwrite_fit,
-        )
 
-        print("\nFit summary")
-        print(summary[[
-            "condition_id",
-            "standard_cue",
-            "standard_angle_abs",
-            "comparison_cue",
-            "PSE",
-            "JND_84",
-            "eta",
-            "fit_loaded_from_cache",
-        ]])
+def find_run_files(
+    subject_id,
+    save_root="data/raw",
+    condition_id=None,
+    reference_cue=None,
+    comparison_cue=None,
+    reference_angle=None,
+    reference_center_frequency=None,
+    comparison_center_frequency=None,
+):
+    """
+    Find raw run CSV files matching a set of experiment parameters.
 
-        return csv_path, summary
+    The search is based on metadata inside the CSV files, not on filenames.
 
-    return csv_path, None
+    Parameters
+    ----------
+    subject_id : str
+        Participant identifier.
+
+    save_root : str
+        Root directory for raw data.
+
+    condition_id : str or None
+        Optional condition label. Usually leave this as None if you want to
+        pool across repeated runs or renamed conditions.
+
+    reference_cue, comparison_cue : str or None
+        Cue names, e.g. "ITD", "ILD", "COMBINED".
+
+    reference_angle : float or None
+        Reference angle. Matching is done on absolute value, so mirrored
+        left/right versions are treated together.
+
+    reference_center_frequency, comparison_center_frequency : float or None
+        Frequencies in Hz.
+
+    Returns
+    -------
+    matches : list of Path
+        Raw CSV files matching the requested parameters.
+    """
+
+    subject_dir = Path(save_root) / subject_id
+
+    if not subject_dir.exists():
+        raise FileNotFoundError(f"No data directory found: {subject_dir}")
+
+    csv_files = sorted(subject_dir.glob("*.csv"))
+    matches = []
+
+    for csv_path in csv_files:
+
+        try:
+            df = pd.read_csv(csv_path)
+        except Exception as e:
+            print(f"Could not read {csv_path}: {e}")
+            continue
+
+        if df.empty:
+            continue
+
+        keep = True
+
+        if condition_id is not None:
+            keep &= "condition_id" in df.columns
+            keep &= (df["condition_id"].astype(str) == str(condition_id)).any()
+
+        if reference_cue is not None:
+            keep &= "reference_cue" in df.columns
+            keep &= (df["reference_cue"].astype(str) == str(reference_cue)).any()
+
+        if comparison_cue is not None:
+            keep &= "comparison_cue" in df.columns
+            keep &= (df["comparison_cue"].astype(str) == str(comparison_cue)).any()
+
+        if reference_angle is not None:
+            keep &= "reference_angle" in df.columns
+
+            if keep:
+                keep &= (
+                    df["reference_angle"].astype(float).abs()
+                    == abs(float(reference_angle))
+                ).any()
+
+        if reference_center_frequency is not None:
+            keep &= "reference_center_frequency" in df.columns
+
+            if keep:
+                keep &= (
+                    df["reference_center_frequency"].astype(float)
+                    == float(reference_center_frequency)
+                ).any()
+
+        if comparison_center_frequency is not None:
+            keep &= "comparison_center_frequency" in df.columns
+
+            if keep:
+                keep &= (
+                    df["comparison_center_frequency"].astype(float)
+                    == float(comparison_center_frequency)
+                ).any()
+
+        if keep:
+            matches.append(csv_path)
+
+    return matches
+
+
+def fit_runs_by_params(
+    subject_id,
+    save_root="data/raw",
+    derivatives_root="data/psychometrics",
+    condition_id=None,
+    reference_cue=None,
+    comparison_cue=None,
+    reference_angle=None,
+    reference_center_frequency=None,
+    comparison_center_frequency=None,
+    overwrite=False,
+):
+    """
+    Find matching raw files and fit all matching data together.
+
+    This function does not run a new experiment. It only searches existing
+    raw CSV files and fits the psychometric functions for the matching trials.
+
+    Matching is based on metadata inside the CSV files.
+
+    Returns
+    -------
+    summary : pandas.DataFrame
+        Psychometric fit summary table for the matching data.
+    """
+
+    files = find_run_files(
+        subject_id=subject_id,
+        save_root=save_root,
+        condition_id=condition_id,
+        reference_cue=reference_cue,
+        comparison_cue=comparison_cue,
+        reference_angle=reference_angle,
+        reference_center_frequency=reference_center_frequency,
+        comparison_center_frequency=comparison_center_frequency,
+    )
+
+    if not files:
+        print("No matching run files found.")
+        return pd.DataFrame()
+
+    print("\nFound matching run files:")
+    for file in files:
+        print(f"  {file}")
+
+    summary = fit_run_files(
+        csv_paths=files,
+        derivatives_root=derivatives_root,
+        sigmoid="norm",
+        experiment_type="yes/no",
+        overwrite=overwrite,
+        analysis_label="combined_runs",
+    )
+
+    return summary
+
+
+def fit_single_run_file(
+    csv_path,
+    derivatives_root="data/psychometrics",
+    overwrite=False,
+):
+    """
+    Fit psychometric functions from one specific raw CSV file.
+
+    Useful for quick checks immediately after a run.
+    """
+
+    return fit_run_file(
+        csv_path=csv_path,
+        derivatives_root=derivatives_root,
+        sigmoid="norm",
+        experiment_type="yes/no",
+        overwrite=overwrite,
+    )

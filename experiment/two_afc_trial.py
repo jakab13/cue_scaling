@@ -20,7 +20,7 @@ class StimulusSpec:
 
 @dataclass
 class TrialSpec:
-    standard: StimulusSpec
+    reference: StimulusSpec
     comparison: StimulusSpec
     duration: float = 0.3
     samplerate: int = 44100
@@ -34,7 +34,7 @@ def make_stimulus(stim_spec, trial_spec, base_sound=None):
     Generate and spatialise one stimulus.
 
     If base_sound is given, it is copied and used as the starting sound.
-    This allows standard and comparison to share the same noise token.
+    This allows reference and comparison to share the same noise token.
     If base_sound is None, a new sound is generated.
     """
 
@@ -86,14 +86,14 @@ def prepare_2afc_trial(trial_spec, rng=None):
         rng = random.Random()
 
     base_sound, _ = generate_stim(
-        center_frequency=trial_spec.standard.center_frequency,
+        center_frequency=trial_spec.reference.center_frequency,
         duration=trial_spec.duration,
         samplerate=trial_spec.samplerate,
         level=trial_spec.level,
     )
 
-    standard_sound, standard_info = make_stimulus(
-        stim_spec=trial_spec.standard,
+    reference_sound, reference_info = make_stimulus(
+        stim_spec=trial_spec.reference,
         trial_spec=trial_spec,
         base_sound=base_sound,
     )
@@ -104,9 +104,9 @@ def prepare_2afc_trial(trial_spec, rng=None):
         base_sound=base_sound,
     )
 
-    order = ["standard", "comparison"]
+    order = ["reference", "comparison"]
     sounds = {
-        "standard": standard_sound,
+        "reference": reference_sound,
         "comparison": comparison_sound,
     }
 
@@ -116,7 +116,7 @@ def prepare_2afc_trial(trial_spec, rng=None):
 
     solution = get_solution(
         order=order,
-        standard=standard_info,
+        reference=reference_info,
         comparison=comparison_info,
     )
 
@@ -124,7 +124,7 @@ def prepare_2afc_trial(trial_spec, rng=None):
         "first": order[0],
         "second": order[1],
         "solution": solution,
-        "standard": standard_info,
+        "reference": reference_info,
         "comparison": comparison_info,
         "isi": trial_spec.isi,
         "duration": trial_spec.duration,
@@ -136,16 +136,16 @@ def prepare_2afc_trial(trial_spec, rng=None):
     return ordered_sounds, trial_info
 
 
-def get_solution(order, standard, comparison):
+def get_solution(order, reference, comparison):
     """
     Determine whether the second sound is further left or right
     than the first sound.
 
-    Uses resolved angles from standard_info and comparison_info.
+    Uses resolved angles from reference_info and comparison_info.
     """
 
     specs = {
-        "standard": standard,
+        "reference": reference,
         "comparison": comparison,
     }
 

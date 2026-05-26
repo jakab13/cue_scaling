@@ -47,7 +47,7 @@ def flatten_trial_data(
     Convert trial metadata and response into one flat row for CSV saving.
     """
 
-    standard = trial_info["standard"]
+    reference = trial_info["reference"]
     comparison = trial_info["comparison"]
 
     solution = trial_info["solution"]
@@ -67,12 +67,12 @@ def flatten_trial_data(
         "comparison_index": planned_trial.comparison_index,
         "mirrored": planned_trial.mirrored,
 
-        # standard stimulus
-        "standard_angle": standard.get("angle"),
-        "standard_cue": standard.get("cue"),
-        "standard_center_frequency": standard.get("center_frequency"),
-        "standard_ITD": standard.get("ITD"),
-        "standard_ILD": standard.get("ILD"),
+        # reference stimulus
+        "reference_angle": reference.get("angle"),
+        "reference_cue": reference.get("cue"),
+        "reference_center_frequency": reference.get("center_frequency"),
+        "reference_ITD": reference.get("ITD"),
+        "reference_ILD": reference.get("ILD"),
 
         # comparison stimulus
         "comparison_angle": comparison.get("angle"),
@@ -130,13 +130,12 @@ def append_row_to_csv(row, save_path):
 def make_run_save_path(
     subject_id,
     save_root="data/raw",
-    run_label="run",
 ):
     """
     Create one unique CSV path per run.
 
     Example:
-    data/raw/vp_001/vp_001_run_2026-05-20_11-42-03.csv
+        data/raw/jakab/jakab_2026-05-21_16-31-02.csv
     """
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -144,15 +143,15 @@ def make_run_save_path(
     save_dir = Path(save_root) / subject_id
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{subject_id}_{run_label}_{timestamp}.csv"
+    filename = f"{subject_id}_{timestamp}.csv"
 
     return save_dir / filename
+
 
 def run_experiment(
     subject_id,
     run_trials,
     save_root="data/raw",
-    run_label="run",
     left_key="1",
     right_key="2"
 ):
@@ -164,8 +163,7 @@ def run_experiment(
 
     save_path = make_run_save_path(
         subject_id=subject_id,
-        save_root=save_root,
-        run_label=run_label,
+        save_root=save_root
     )
 
     print("\nExperiment setup")
