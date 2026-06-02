@@ -16,6 +16,8 @@ def run_experiment_from_conditions(
     seed=None,
     left_key="1",
     right_key="2",
+    analysis_role="main",
+    include_in_analysis=True,
 ):
     """
     Build a trial sequence from ConditionSpec objects and run the experiment.
@@ -62,12 +64,17 @@ def run_experiment_from_conditions(
     print(f"Number of trials: {len(run_trials)}")
     print("-" * 50)
 
+    if not include_in_analysis:
+        print("This run is marked as practice/test and will not enter main analysis.")
+
     csv_path = run_experiment(
         subject_id=subject_id,
         run_trials=run_trials,
         save_root=save_root,
         left_key=left_key,
         right_key=right_key,
+        analysis_role=analysis_role,
+        include_in_analysis=include_in_analysis,
     )
 
     return csv_path
@@ -222,10 +229,6 @@ def fit_runs_by_params(
     if not files:
         print("No matching run files found.")
         return pd.DataFrame()
-
-    print("\nFound matching run files:")
-    for file in files:
-        print(f"  {file}")
 
     summary = fit_run_files(
         csv_paths=files,

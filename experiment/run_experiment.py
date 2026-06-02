@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime
 import csv
 import time
+import numpy as np
 
 from experiment.two_afc_trial import prepare_2afc_trial, play_2afc_trial
 
@@ -19,7 +20,7 @@ def collect_response(
     """
 
     prompt = (
-        f"Trial {trial_number}/{n_trials} | "
+        f"[Trial {trial_number}/{n_trials}] "
         f"Response [{left_key}=left, {right_key}=right]: "
     )
 
@@ -33,6 +34,55 @@ def collect_response(
             return "right"
 
         print("Invalid response.")
+
+
+def get_scalar_cue_value(stimulus_info):
+    """
+    Return the scalar cue value for value-based fits.
+
+    ILD -> dB
+    ITD -> seconds
+    COMBINED -> None, because there is no single scalar value.
+    """
+
+    cue = str(stimulus_info.get("cue", "")).upper()
+
+    if cue == "ILD":
+        return stimulus_info.get("ILD")
+
+    if cue == "ITD":
+        return stimulus_info.get("ITD")
+
+    return None
+
+
+def add_folded_trial_columns(row):
+    """
+    Add analysis-ready folded columns to one saved trial row.
+    """
+
+    reference_angle = float(row["reference_angle"])
+
+    fold_sign = 1 if reference_angle == 0 else np.sign(reference_angle)
+
+    row["reference_angle_folded"] = abs(reference_angle)
+
+    if row["comparison_angle"] is not None:
+        row["comparison_angle_folded"] = float(row["comparison_angle"]) * fold_sign
+    else:
+        row["comparison_angle_folded"] = None
+
+    if row["reference_value"] is not None:
+        row["reference_value_folded"] = float(row["reference_value"]) * fold_sign
+    else:
+        row["reference_value_folded"] = None
+
+    if row["comparison_value"] is not None:
+        row["comparison_value_folded"] = float(row["comparison_value"]) * fold_sign
+    else:
+        row["comparison_value_folded"] = None
+
+    return row
 
 
 def flatten_trial_data(
@@ -49,6 +99,9 @@ def flatten_trial_data(
 
     reference = trial_info["reference"]
     comparison = trial_info["comparison"]
+
+    reference_value = get_scalar_cue_value(reference)
+    comparison_value = get_scalar_cue_value(comparison)
 
     solution = trial_info["solution"]
     is_correct = response == solution
@@ -73,6 +126,7 @@ def flatten_trial_data(
         "reference_center_frequency": reference.get("center_frequency"),
         "reference_ITD": reference.get("ITD"),
         "reference_ILD": reference.get("ILD"),
+        "reference_value": reference_value,
 
         # comparison stimulus
         "comparison_angle": comparison.get("angle"),
@@ -80,6 +134,7 @@ def flatten_trial_data(
         "comparison_center_frequency": comparison.get("center_frequency"),
         "comparison_ITD": comparison.get("ITD"),
         "comparison_ILD": comparison.get("ILD"),
+        "comparison_value": comparison_value,
 
         # initial pse estimate
         "pse_estimate_angle": planned_trial.pse_estimate_angle,
@@ -101,8 +156,10 @@ def flatten_trial_data(
         "duration": trial_info["duration"],
         "samplerate": trial_info["samplerate"],
         "level": trial_info["level"],
-        "head_radius": trial_info["head_radius"]
+        "head_radius": trial_info["head_radius"],
     }
+
+    row = add_folded_trial_columns(row)
 
     return row
 
@@ -153,7 +210,9 @@ def run_experiment(
     run_trials,
     save_root="data/raw",
     left_key="1",
-    right_key="2"
+    right_key="2",
+    analysis_role="main",
+    include_in_analysis=True,
 ):
     """
     Run one experimental sequence and save one CSV file for this run.
@@ -166,18 +225,9 @@ def run_experiment(
         save_root=save_root
     )
 
-    print("\nExperiment setup")
-    print("-" * 40)
-    print(f"Subject ID:      {subject_id}")
-    print(f"Number of trials:{len(run_trials)}")
-    print(f"Save file:       {save_path}")
-    print("-" * 40)
+    input("Ready?")
 
     print("\nStarting run.")
-    print("Response keys:")
-    print(f"  {left_key} = left")
-    print(f"  {right_key} = right")
-    print()
 
     for trial_number, planned_trial in enumerate(run_trials, start=1):
 
@@ -209,6 +259,9 @@ def run_experiment(
             response=response,
             reaction_time=reaction_time,
         )
+
+        row["analysis_role"] = analysis_role
+        row["include_in_analysis"] = include_in_analysis
 
         append_row_to_csv(
             row=row,

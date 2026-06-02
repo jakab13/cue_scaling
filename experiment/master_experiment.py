@@ -1,12 +1,9 @@
-# TODO more console feedback for experimenter (e.g. "Calculating psychometric fit")
-# TODO plot psychometric fits in subplots (cue x standard_angle_abs)
-
-# master_experiment.py
-
+from experiment.experiment_planner import plan_k_slope_run, plan_jnd_run
 from experiment.run_builders import make_jnd_run, make_k_slope_run
 from experiment.experiment_pipeline import run_experiment_from_conditions, fit_runs_by_params
-from analysis.view_psychometrics import show_psychometric_figures
-
+from analysis.estimate_k_slopes import estimate_k_slopes
+from analysis.plot_k_slopes import plot_k_slopes
+from analysis.plot_jnds import plot_jnds
 
 # ============================================================
 # General settings
@@ -14,23 +11,35 @@ from analysis.view_psychometrics import show_psychometric_figures
 
 SUBJECT_ID = "jakab"
 
-FREQUENCY = 1400
+FREQUENCY = 1000
 
-RUN_MODE = "K_SLOPE"
-K_SLOPE_CUE = "ITD"
+K_SLOPE_CUE = "COMBINED"  # Use 'ITD', 'ILD', or 'COMBINED'
 
-# JND_CUE = "ILD"
-#
-# JND_COMPARISON_ANGLES = [
-#     -6, -4, -2, -1,
-#      1,  2,  4,  6,
-# ]
+JND_CUE = "COMBINED"
 
-# jnd_conditions = make_jnd_run(
-#     frequency=FREQUENCY,
-#     cue=JND_CUE,
-#     comparison_angles=JND_COMPARISON_ANGLES,
-# )
+JND_COMPARISON_ANGLES = plan_jnd_run(
+    cue=JND_CUE,
+    frequency=FREQUENCY,
+)
+
+jnd_conditions = make_jnd_run(
+    frequency=FREQUENCY,
+    cue=JND_CUE,
+    comparison_angles=JND_COMPARISON_ANGLES,
+)
+
+practice_conditions = make_jnd_run(
+    frequency=1000,
+    cue="COMBINED",
+    comparison_angles=[-21, -15, -9, -3, 3, 9, 15, 21],
+)
+
+run_experiment_from_conditions(
+    subject_id=SUBJECT_ID,
+    conditions=practice_conditions,
+    analysis_role="practice",
+    include_in_analysis=False,
+)
 
 # ============================================================
 # k-slope run settings
@@ -40,14 +49,21 @@ K_SLOPE_CUE = "ITD"
 # Each point is one PSE measurement.
 # pse_estimate_value and comparison_value_offsets are in comparison-cue units.
 # For ILD, that means dB.
-K_REFERENCE_POINTS = [
-    {"reference_cue": K_SLOPE_CUE, "reference_angle": 5, "pse_estimate_value": 1.0},
-    {"reference_cue": K_SLOPE_CUE, "reference_angle": 10, "pse_estimate_value": 1.5},
-    {"reference_cue": K_SLOPE_CUE, "reference_angle": 15, "pse_estimate_value": 2.},
-]
+
+K_REFERENCE_POINTS = plan_k_slope_run(
+    subject_id=SUBJECT_ID,
+    reference_cue=K_SLOPE_CUE,
+    frequency=FREQUENCY,
+)
+
+# K_REFERENCE_POINTS = [
+#     {"reference_cue": K_SLOPE_CUE, "reference_angle": 4, "pse_estimate_value": 1},
+#     {"reference_cue": K_SLOPE_CUE, "reference_angle": 8, "pse_estimate_value": 2},
+#     {"reference_cue": K_SLOPE_CUE, "reference_angle": 12, "pse_estimate_value": 3},
+# ]
 
 k_slope_conditions = make_k_slope_run(
-    frequency=1400,
+    frequency=FREQUENCY,
     reference_points=K_REFERENCE_POINTS
 )
 # ============================================================
@@ -67,21 +83,9 @@ run_experiment_from_conditions(
 )
 
 # Fit existing data by parameters:
-summary = fit_runs_by_params(
-    subject_id=SUBJECT_ID,
-    reference_cue=K_SLOPE_CUE,
-    comparison_cue="ILD",
-    reference_angle=15,
-    reference_center_frequency=FREQUENCY,
-    comparison_center_frequency=FREQUENCY,
-)
+summary = fit_runs_by_params(subject_id=SUBJECT_ID)
 
-# View existing psychometric figures:
-show_psychometric_figures(
-    subject_id=SUBJECT_ID,
-    reference_cue=K_SLOPE_CUE,
-    comparison_cue="ILD",
-    reference_angle=5,
-    reference_center_frequency=FREQUENCY,
-    comparison_center_frequency=FREQUENCY,
-)
+points, slopes = estimate_k_slopes(save=True)
+fig, axes = plot_k_slopes(subject_id=SUBJECT_ID)
+# fig, axes = plot_jnds(subject_id=SUBJECT_ID)
+

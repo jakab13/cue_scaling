@@ -8,20 +8,19 @@ DEFAULT_DURATION = 0.3
 DEFAULT_ISI = 0.2
 DEFAULT_HEAD_RADIUS = 8.75
 
-DEFAULT_JND_REPETITIONS = 8
+DEFAULT_JND_REPETITIONS = 16
 DEFAULT_K_SLOPE_REPETITIONS = 8
 
 DEFAULT_K_COMPARISON_CUE = "ILD"
 
 # For ILD comparison measurements, these are in dB.
 DEFAULT_K_COMPARISON_VALUE_OFFSETS = [
-    -3.5, -2.5, -1.5, -0.5,
-     0.5,  1.5,  2.5, 3.5,
+    -4.2, -3.0, -1.8, -0.6,
+     0.6,  1.8,  3.0, 4.2,
 ]
 
-DEFAULT_MIN_COMPARISON_VALUE = -6
-DEFAULT_MAX_COMPARISON_VALUE = 6
-
+DEFAULT_MIN_COMPARISON_VALUE = -8
+DEFAULT_MAX_COMPARISON_VALUE = 8
 
 def make_jnd_run(
     frequency,
@@ -157,3 +156,5 @@ def make_k_slope_run(
         conditions.append(condition)
 
     return conditions
+
+

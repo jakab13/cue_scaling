@@ -2,6 +2,7 @@ import slab
 import pickle
 from pathlib import Path
 import numpy as np
+import pandas as pd
 
 DEFAULT_ILS_PATH = Path("stimuli/ils_kemar.pickle")
 
@@ -92,6 +93,149 @@ def ild_tuple_to_scalar(ild):
         return right_level - left_level
 
     return ild
+
+
+DEFAULT_ILD_SLOPE_AZIS = np.arange(-15, 20, 5, dtype=float)
+
+
+def ild_from_ils(
+    azis_deg,
+    freq_hz,
+    ils_dict=None,
+):
+    """
+    Get scalar ILD values from the interaural level spectrum.
+
+    Scalar ILD is defined as:
+        right_level - left_level
+
+    Parameters
+    ----------
+    azis_deg : float or array-like
+        Azimuth angle(s) in degrees.
+
+    freq_hz : float
+        Frequency in Hz.
+
+    ils_dict : dict or None
+        Interaural level spectrum. If None, the default saved ILS is loaded.
+
+    Returns
+    -------
+    ild_vals : np.ndarray
+        ILD values in dB.
+    """
+
+    if ils_dict is None:
+        ils_dict = get_interaural_level_spectrum()
+
+    scalar_input = np.isscalar(azis_deg)
+
+    if scalar_input:
+        azis_deg = [azis_deg]
+
+    ild_vals = []
+
+    for azimuth in azis_deg:
+        ild_tuple = slab.Binaural.azimuth_to_ild(
+            azimuth=float(azimuth),
+            frequency=freq_hz,
+            ils=ils_dict,
+        )
+
+        ild_scalar = ild_tuple_to_scalar(ild_tuple)
+        ild_vals.append(ild_scalar)
+
+    ild_vals = np.asarray(ild_vals, dtype=float)
+
+    if scalar_input:
+        return float(ild_vals[0])
+
+    return ild_vals
+
+
+def ild_slope_at_zero_fit(
+    freq_hz,
+    ils_dict=None,
+    azis_deg=DEFAULT_ILD_SLOPE_AZIS,
+    return_abs=True,
+):
+    """
+    Local linear-fit estimate of the slope of ILD(azimuth) around 0 degrees.
+
+    Returns slope in dB/degree.
+
+    Parameters
+    ----------
+    freq_hz : float
+        Frequency in Hz.
+
+    ils_dict : dict or None
+        Interaural level spectrum. If None, the default saved ILS is loaded.
+
+    azis_deg : array-like
+        Azimuths used for the local linear fit.
+
+    return_abs : bool
+        If True, return the absolute slope magnitude.
+        This is usually what we want for experiment planning.
+    """
+
+    if ils_dict is None:
+        ils_dict = get_interaural_level_spectrum()
+
+    azis_deg = np.asarray(azis_deg, dtype=float)
+
+    ild_vals = ild_from_ils(
+        azis_deg=azis_deg,
+        freq_hz=freq_hz,
+        ils_dict=ils_dict,
+    )
+
+    slope, intercept = np.polyfit(azis_deg, ild_vals, deg=1)
+
+    if return_abs:
+        return float(abs(slope))
+
+    return float(slope)
+
+
+def get_ILD_slopes(
+    freqs_of_interest=(400, 600, 800, 1000, 1200, 1400),
+    azis_deg=DEFAULT_ILD_SLOPE_AZIS,
+    ils_dict=None,
+    return_abs=True,
+):
+    """
+    Estimate ILD slopes for multiple frequencies.
+
+    Returns
+    -------
+    df_slopes : pandas.DataFrame
+        Columns:
+            standard_center_frequency
+            slope_db
+    """
+
+    if ils_dict is None:
+        ils_dict = get_interaural_level_spectrum()
+
+    df_slopes = pd.DataFrame(
+        {
+            "standard_center_frequency": freqs_of_interest,
+            "slope_db": [
+                ild_slope_at_zero_fit(
+                    freq_hz=f,
+                    ils_dict=ils_dict,
+                    azis_deg=azis_deg,
+                    return_abs=return_abs,
+                )
+                for f in freqs_of_interest
+            ],
+        }
+    )
+
+    return df_slopes
 
 
 def value_to_angle(
