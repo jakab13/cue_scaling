@@ -158,3 +158,24 @@ def make_k_slope_run(
     return conditions
 
 
+def make_practice_run(
+    frequency=1000,
+    cue="ILD",
+    comparison_angles="COMBINED",
+    n_repetitions=8,
+):
+    """
+    Short centred JND run for practice/test purposes.
+    Not intended for main analysis.
+    """
+
+    if comparison_angles is None:
+        comparison_angles = [-35, -25, -15, -5, 5, 15, 25, 35]
+
+    return make_jnd_run(
+        frequency=frequency,
+        cue=cue,
+        comparison_angles=comparison_angles,
+        n_repetitions=n_repetitions,
+    )
+
