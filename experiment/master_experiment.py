@@ -9,9 +9,9 @@ from analysis.plot_jnds import plot_jnds
 # General settings
 # ============================================================
 
-SUBJECT_ID = "jakab"
+SUBJECT_ID = "test_subject"
 
-FREQUENCY = 400
+FREQUENCY = 1400
 
 # ============================================================
 # 1. Practice run
@@ -53,7 +53,7 @@ run_experiment_from_conditions(
 # k slope run (repeat x3 for different k slope cues)
 # ============================================================
 
-K_SLOPE_CUE = "ITD"  # Use 'ITD', 'ILD', or 'COMBINED'
+K_SLOPE_CUE = "COMBINED"  # Use 'ITD', 'ILD', or 'COMBINED'
 
 K_REFERENCE_POINTS = plan_k_slope_run(
     reference_cue=K_SLOPE_CUE,
@@ -70,7 +70,8 @@ K_REFERENCE_POINTS = plan_k_slope_run(
 
 k_slope_conditions = make_k_slope_run(
     frequency=FREQUENCY,
-    reference_points=K_REFERENCE_POINTS
+    reference_points=K_REFERENCE_POINTS,
+    n_repetitions=4
 )
 
 run_experiment_from_conditions(

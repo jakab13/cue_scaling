@@ -13,11 +13,12 @@ from stimuli.sound_handler import ild_slope_at_zero_fit
 DEFAULT_ILS_PATH = "stimuli/ils_kemar.pickle"
 
 DEFAULT_COMPARISON_VALUE_OFFSETS = [
-    -4.2, -3.0, -1.8, -0.6,
-     0.6,  1.8,  3.0,  4.2,
+    -7.0, -5.0, -3.0, -1.0,
+     1.0, 3.0, 5.0, 7.0
 ]
 
 DEFAULT_REFERENCE_ANGLE_SETS = [
+    [1, 2, 3],
     [2, 4, 6],
     [3, 6, 9],
     [4, 8, 12],
@@ -26,7 +27,7 @@ DEFAULT_REFERENCE_ANGLE_SETS = [
     [8, 16, 24],
 ]
 
-DEFAULT_VALUE_LIMIT = 8
+DEFAULT_VALUE_LIMIT = 12
 DEFAULT_ANGLE_LIMIT = 30
 
 

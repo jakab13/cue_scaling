@@ -15,12 +15,12 @@ DEFAULT_K_COMPARISON_CUE = "ILD"
 
 # For ILD comparison measurements, these are in dB.
 DEFAULT_K_COMPARISON_VALUE_OFFSETS = [
-    -4.2, -3.0, -1.8, -0.6,
-     0.6,  1.8,  3.0, 4.2,
+    -7.0, -5.0, -3.0, -1.0,
+    1.0, 3.0, 5.0, 7.0
 ]
 
-DEFAULT_MIN_COMPARISON_VALUE = -8
-DEFAULT_MAX_COMPARISON_VALUE = 8
+DEFAULT_MIN_COMPARISON_VALUE = -20
+DEFAULT_MAX_COMPARISON_VALUE = 20
 
 def make_jnd_run(
     frequency,
@@ -160,8 +160,8 @@ def make_k_slope_run(
 
 def make_practice_run(
     frequency=1000,
-    cue="ILD",
-    comparison_angles="COMBINED",
+    cue="COMBINED",
+    comparison_angles=None,
     n_repetitions=8,
 ):
     """
