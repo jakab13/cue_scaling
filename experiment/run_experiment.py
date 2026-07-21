@@ -3,37 +3,53 @@ from datetime import datetime
 import csv
 import time
 import numpy as np
+from readchar import readkey
 
 from experiment.two_afc_trial import prepare_2afc_trial, play_2afc_trial
 
 def collect_response(
     trial_number,
     n_trials,
-    left_key="l",
-    right_key="r",
+    left_key="1",
+    right_key="2",
 ):
     """
-    Collect a left/right response using input().
+    Collect a left/right response from a single keypress.
 
-    Designed for a keyboard/button box that sends the keypress
-    followed by Enter automatically.
+    No Enter press is required.
     """
+
+    left_key = str(left_key).lower()
+    right_key = str(right_key).lower()
+
+    if len(left_key) != 1 or len(right_key) != 1:
+        raise ValueError("left_key and right_key must each be one character.")
 
     prompt = (
         f"[Trial {trial_number}/{n_trials}] "
         f"Response [{left_key}=left, {right_key}=right]: "
     )
 
-    while True:
-        key = input(prompt).strip().lower()
+    print(prompt, end="", flush=True)
 
-        if key in [left_key, "left"]:
+    while True:
+        pressed_key = readkey().lower()
+
+        # Silently ignore Enter. This also makes the function compatible
+        # with button boxes that may send Enter after the response key.
+        if pressed_key in ("\r", "\n"):
+            continue
+
+        if pressed_key == left_key:
+            print("left")
             return "left"
 
-        if key in [right_key, "right"]:
+        if pressed_key == right_key:
+            print("right")
             return "right"
 
-        print("Invalid response.")
+        print(f"{pressed_key!r} is invalid.")
+        print(prompt, end="", flush=True)
 
 
 def get_scalar_cue_value(stimulus_info):
