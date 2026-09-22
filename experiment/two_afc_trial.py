@@ -79,32 +79,75 @@ def make_stimulus(stim_spec, trial_spec, base_sound=None):
 def prepare_2afc_trial(trial_spec, rng=None):
     """
     Prepare one 2AFC trial.
-
     """
 
     if rng is None:
         rng = random.Random()
 
-    base_sound, _ = generate_stim(
-        center_frequency=trial_spec.reference.center_frequency,
-        duration=trial_spec.duration,
-        samplerate=trial_spec.samplerate,
-        level=trial_spec.level,
-    )
+    ref_freq = trial_spec.reference.center_frequency
+    comp_freq = trial_spec.comparison.center_frequency
+
+    # --------------------------------------------------------
+    # Generate the appropriate sound at each frequency
+    # --------------------------------------------------------
+
+    if ref_freq == comp_freq:
+
+        # Same-frequency experiment:
+        # share one noise token as before.
+        base_sound, _ = generate_stim(
+            center_frequency=ref_freq,
+            duration=trial_spec.duration,
+            samplerate=trial_spec.samplerate,
+            level=trial_spec.level,
+        )
+
+        reference_base = base_sound
+        comparison_base = base_sound
+
+    else:
+
+        # Across-frequency experiment:
+        # each sound must be generated at its own frequency.
+        reference_base, _ = generate_stim(
+            center_frequency=ref_freq,
+            duration=trial_spec.duration,
+            samplerate=trial_spec.samplerate,
+            level=trial_spec.level,
+        )
+
+        comparison_base, _ = generate_stim(
+            center_frequency=comp_freq,
+            duration=trial_spec.duration,
+            samplerate=trial_spec.samplerate,
+            level=trial_spec.level,
+        )
+
+    # --------------------------------------------------------
+    # Apply spatial cues
+    # --------------------------------------------------------
 
     reference_sound, reference_info = make_stimulus(
         stim_spec=trial_spec.reference,
         trial_spec=trial_spec,
-        base_sound=base_sound,
+        base_sound=reference_base,
     )
 
     comparison_sound, comparison_info = make_stimulus(
         stim_spec=trial_spec.comparison,
         trial_spec=trial_spec,
-        base_sound=base_sound,
+        base_sound=comparison_base,
     )
 
-    order = ["reference", "comparison"]
+    # --------------------------------------------------------
+    # Randomise presentation order
+    # --------------------------------------------------------
+
+    order = [
+        "reference",
+        "comparison",
+    ]
+
     sounds = {
         "reference": reference_sound,
         "comparison": comparison_sound,
@@ -112,7 +155,10 @@ def prepare_2afc_trial(trial_spec, rng=None):
 
     rng.shuffle(order)
 
-    ordered_sounds = [sounds[order[0]], sounds[order[1]]]
+    ordered_sounds = [
+        sounds[order[0]],
+        sounds[order[1]],
+    ]
 
     solution = get_solution(
         order=order,
@@ -130,7 +176,7 @@ def prepare_2afc_trial(trial_spec, rng=None):
         "duration": trial_spec.duration,
         "samplerate": trial_spec.samplerate,
         "level": trial_spec.level,
-        "head_radius": trial_spec.head_radius
+        "head_radius": trial_spec.head_radius,
     }
 
     return ordered_sounds, trial_info

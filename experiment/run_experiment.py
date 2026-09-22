@@ -12,44 +12,106 @@ def collect_response(
     n_trials,
     left_key="1",
     right_key="2",
+    response_mode="input",
 ):
     """
-    Collect a left/right response from a single keypress.
+    Collect a left/right response.
 
-    No Enter press is required.
+    response_mode:
+        "single_key"
+            Current behaviour.
+            One keypress is enough; no Enter required.
+
+        "input"
+            Standard console input.
+            Type 1 or 2 and press Enter.
+            Useful in PyCharm consoles or environments where
+            readkey/termios is unavailable.
     """
 
     left_key = str(left_key).lower()
     right_key = str(right_key).lower()
 
     if len(left_key) != 1 or len(right_key) != 1:
-        raise ValueError("left_key and right_key must each be one character.")
+        raise ValueError(
+            "left_key and right_key must each be one character."
+        )
 
     prompt = (
         f"[Trial {trial_number}/{n_trials}] "
         f"Response [{left_key}=left, {right_key}=right]: "
     )
 
-    print(prompt, end="", flush=True)
+    # ========================================================
+    # STANDARD INPUT MODE
+    # ========================================================
 
-    while True:
-        pressed_key = readkey().lower()
+    if response_mode == "input":
 
-        # Silently ignore Enter. This also makes the function compatible
-        # with button boxes that may send Enter after the response key.
-        if pressed_key in ("\r", "\n"):
-            continue
+        while True:
 
-        if pressed_key == left_key:
-            print("left")
-            return "left"
+            pressed_key = input(
+                prompt
+            ).strip().lower()
 
-        if pressed_key == right_key:
-            print("right")
-            return "right"
+            if pressed_key == left_key:
+                return "left"
 
-        print(f"{pressed_key!r} is invalid.")
-        print(prompt, end="", flush=True)
+            if pressed_key == right_key:
+                return "right"
+
+            print(
+                f"{pressed_key!r} is invalid."
+            )
+
+    # ========================================================
+    # SINGLE-KEY MODE
+    # ========================================================
+
+    elif response_mode == "single_key":
+
+        print(
+            prompt,
+            end="",
+            flush=True,
+        )
+
+        while True:
+
+            pressed_key = readkey().lower()
+
+            # Ignore Enter. This also supports button boxes
+            # that send Enter after the response key.
+            if pressed_key in (
+                "\r",
+                "\n",
+            ):
+                continue
+
+            if pressed_key == left_key:
+                print("left")
+                return "left"
+
+            if pressed_key == right_key:
+                print("right")
+                return "right"
+
+            print(
+                f"{pressed_key!r} is invalid."
+            )
+
+            print(
+                prompt,
+                end="",
+                flush=True,
+            )
+
+    else:
+
+        raise ValueError(
+            "response_mode must be "
+            "'single_key' or 'input'."
+        )
 
 
 def get_scalar_cue_value(stimulus_info):

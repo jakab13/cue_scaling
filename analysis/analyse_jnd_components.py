@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from scipy.stats import linregress
+from scipy.optimize import minimize
+
 
 CUE_ORDER = ["ILD", "ITD", "COMBINED"]
 
@@ -156,10 +159,19 @@ def prepare_k_sigma_predictors(
         sigma_y
 
     k_slope:
-        dB / degree
+    Mapping slope in dB / degree.
 
-    sigma_y:
-        dB, here usually median JND_84 from value-based PSE fits.
+sigma_y:
+    Estimated single-cue uncertainty in ILD comparison space (dB),
+    derived from pairwise psychometric JNDs.
+
+    ILD:
+        sigma_y = JND_ILD->ILD / sqrt(2)
+
+    ITD / COMBINED:
+        sigma_y = sqrt(
+            JND_cue->ILD^2 - sigma_ILD^2
+        )
     """
 
     df = k_slope_summary.copy()
@@ -204,7 +216,7 @@ def prepare_k_sigma_predictors(
             "reference_cue",
             "reference_center_frequency",
             "k_slope",
-            "sigma_y",
+            # "sigma_y",
         ]
     )
 
@@ -288,7 +300,7 @@ def make_jnd_component_table(
     table = table.dropna(
         subset=[
             "JND_measured",
-            "sigma_y",
+            # "sigma_y",
             "k_slope",
         ]
     )
@@ -402,6 +414,259 @@ def fit_simple_linear_prediction(x, y):
         "intercept": intercept,
         "slope": slope,
         "r2": r2_score(y, y_pred),
+    }
+
+
+def fit_inverse_k(k, jnd):
+    """
+    Fit:
+
+        JND = intercept + B / k
+
+    and evaluate prediction error on the original JND scale.
+    """
+
+    k = np.asarray(k, dtype=float)
+    jnd = np.asarray(jnd, dtype=float)
+
+    valid = (
+        np.isfinite(k)
+        & np.isfinite(jnd)
+        & (k > 0)
+    )
+
+    k = k[valid]
+    jnd = jnd[valid]
+
+    if len(k) < 3:
+        return {
+            "intercept": np.nan,
+            "B": np.nan,
+            "p_value": np.nan,
+            "r2": np.nan,
+            "n_points": len(k),
+        }
+
+    inv_k = 1 / k
+
+    result = linregress(inv_k, jnd)
+
+    intercept = result.intercept
+    B = result.slope
+
+    # Predictions from the inverse curve on the original k scale
+    jnd_predicted = intercept + B / k
+
+    # R² from JND prediction errors
+    ss_res = np.sum((jnd - jnd_predicted) ** 2)
+    ss_tot = np.sum((jnd - np.mean(jnd)) ** 2)
+
+    r2 = 1 - ss_res / ss_tot
+
+    return {
+        "intercept": float(intercept),
+        "B": float(B),
+        "p_value": float(result.pvalue),
+        "r2": float(r2),
+        "n_points": len(k),
+    }
+
+
+import numpy as np
+from scipy.optimize import minimize
+
+
+def inverse_model(k, a, B):
+    """
+    JND = a + B / k
+    """
+    return a + B / k
+
+
+def inverse_sse(params, k, jnd):
+    """
+    Sum of squared prediction errors.
+    """
+    a, B = params
+
+    predicted = inverse_model(
+        k=k,
+        a=a,
+        B=B,
+    )
+
+    residuals = jnd - predicted
+
+    return np.sum(residuals ** 2)
+
+
+def fit_inverse_model(k, jnd):
+    """
+    Directly optimise:
+
+        JND = a + B / k
+
+    by minimising squared prediction error.
+    """
+
+    k = np.asarray(k, dtype=float)
+    jnd = np.asarray(jnd, dtype=float)
+
+    valid = (
+        np.isfinite(k)
+        & np.isfinite(jnd)
+        & (k > 0)
+    )
+
+    k = k[valid]
+    jnd = jnd[valid]
+
+    if len(k) < 3:
+        return {
+            "a": np.nan,
+            "B": np.nan,
+            "r2": np.nan,
+            "sse": np.nan,
+            "n_points": len(k),
+        }
+
+    # Reasonable starting guesses
+    start = [
+        np.min(jnd),       # a
+        1.0,               # B
+    ]
+
+    result = minimize(
+        inverse_sse,
+        x0=start,
+        args=(k, jnd),
+        method="Nelder-Mead",
+    )
+
+    a, B = result.x
+
+    predicted = inverse_model(
+        k=k,
+        a=a,
+        B=B,
+    )
+
+    residuals = jnd - predicted
+
+    ss_res = np.sum(residuals ** 2)
+    ss_tot = np.sum(
+        (jnd - np.mean(jnd)) ** 2
+    )
+
+    r2 = 1 - ss_res / ss_tot
+
+    return {
+        "a": float(a),
+        "B": float(B),
+        "r2": float(r2),
+        "sse": float(ss_res),
+        "n_points": len(k),
+        "success": result.success,
+    }
+
+
+def permutation_test_inverse(
+    k,
+    jnd,
+    n_permutations=1000,
+    random_state=42,
+):
+    """
+    Test whether the inverse relationship between k and JND
+    is stronger than expected under random pairing.
+
+    Statistic:
+        improvement in SSE relative to a constant-mean model.
+    """
+
+    k = np.asarray(k, dtype=float)
+    jnd = np.asarray(jnd, dtype=float)
+
+    valid = (
+        np.isfinite(k)
+        & np.isfinite(jnd)
+        & (k > 0)
+    )
+
+    k = k[valid]
+    jnd = jnd[valid]
+
+    rng = np.random.default_rng(random_state)
+
+    # --------------------------------
+    # Null model: constant mean JND
+    # --------------------------------
+
+    null_prediction = np.mean(jnd)
+
+    null_sse = np.sum(
+        (jnd - null_prediction) ** 2
+    )
+
+    # --------------------------------
+    # Observed inverse fit
+    # --------------------------------
+
+    observed_fit = fit_inverse_model(
+        k,
+        jnd,
+    )
+
+    observed_improvement = (
+        null_sse
+        - observed_fit["sse"]
+    )
+
+    # --------------------------------
+    # Permutations
+    # --------------------------------
+
+    permutation_improvements = []
+
+    for _ in range(n_permutations):
+
+        shuffled_jnd = rng.permutation(jnd)
+
+        fit = fit_inverse_model(
+            k,
+            shuffled_jnd,
+        )
+
+        shuffled_null_sse = np.sum(
+            (shuffled_jnd - np.mean(shuffled_jnd)) ** 2
+        )
+
+        improvement = (
+            shuffled_null_sse
+            - fit["sse"]
+        )
+
+        permutation_improvements.append(
+            improvement
+        )
+
+    permutation_improvements = np.asarray(
+        permutation_improvements
+    )
+
+    p_value = (
+        np.sum(
+            permutation_improvements
+            >= observed_improvement
+        )
+        + 1
+    ) / (n_permutations + 1)
+
+    return {
+        "p_value": float(p_value),
+        "observed_improvement": float(
+            observed_improvement
+        ),
     }
 
 
@@ -669,6 +934,315 @@ def plot_component_model_comparison(
     return fig, ax, model_comparison
 
 
+def plot_jnd_vs_k_by_subject(
+    derivatives_root="data/psychometrics",
+    cues=("ILD", "ITD", "COMBINED"),
+    ncols=4,
+    save=False,
+    save_path=None,
+):
+    """
+    Plot measured JND against k slope separately for each subject.
+
+    Each point represents one cue × frequency condition.
+
+    For each subject, fit:
+
+        JND = intercept + B / k
+
+    across all cues and frequencies together.
+
+    The subplot annotation reports:
+        B
+        p-value for the inverse-k term
+        R²
+    """
+
+    derivatives_root = Path(derivatives_root)
+
+    table_path = derivatives_root / "jnd_component_summary.csv"
+
+    if table_path.exists():
+        table = pd.read_csv(table_path)
+    else:
+        table = make_jnd_component_table(
+            derivatives_root=derivatives_root,
+            cues=cues,
+            save=True,
+        )
+
+    # ------------------------------------------------------------
+    # Clean data
+    # ------------------------------------------------------------
+
+    table = table.copy()
+
+    table["reference_cue"] = (
+        table["reference_cue"]
+        .astype(str)
+        .str.upper()
+    )
+
+    table = table[
+        table["reference_cue"].isin(
+            [cue.upper() for cue in cues]
+        )
+    ]
+
+    table["k_slope"] = pd.to_numeric(
+        table["k_slope"],
+        errors="coerce",
+    )
+
+    table["JND_measured"] = pd.to_numeric(
+        table["JND_measured"],
+        errors="coerce",
+    )
+
+    table = table.replace([np.inf, -np.inf], np.nan)
+
+    table = table.dropna(
+        subset=[
+            "subject_id",
+            "reference_cue",
+            "k_slope",
+            "JND_measured",
+        ]
+    )
+
+    # Inverse model only makes sense for positive k
+    table = table[table["k_slope"] > 0]
+
+    if table.empty:
+        raise ValueError("No valid JND/k-slope data found.")
+
+    # ------------------------------------------------------------
+    # Figure layout
+    # ------------------------------------------------------------
+
+    subjects = list(table["subject_id"].astype(str).unique())
+
+    n_subjects = len(subjects)
+    nrows = int(np.ceil(n_subjects / ncols))
+
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(4.0 * ncols, 3.6 * nrows),
+        sharex=False,
+        sharey=False,
+        squeeze=False,
+    )
+
+    axes_flat = axes.flatten()
+
+    # Common limits across subjects
+    global_k_max = table["k_slope"].max()
+    global_jnd_max = table["JND_measured"].max()
+
+    # ------------------------------------------------------------
+    # Subject panels
+    # ------------------------------------------------------------
+
+    fit_rows = []
+
+    for ax, subject in zip(axes_flat, subjects):
+
+        subject_df = table[
+            table["subject_id"].astype(str) == subject
+        ].copy()
+
+        # --------------------------
+        # Scatter points
+        # --------------------------
+
+        for cue in CUE_ORDER:
+
+            if cue not in [c.upper() for c in cues]:
+                continue
+
+            cue_df = subject_df[
+                subject_df["reference_cue"] == cue
+            ]
+
+            if cue_df.empty:
+                continue
+
+            ax.scatter(
+                cue_df["k_slope"],
+                cue_df["JND_measured"],
+                color=CUE_COLORS[cue],
+                label=cue,
+                s=35,
+                alpha=0.9,
+                zorder=3,
+            )
+
+        # --------------------------
+        # Subject-specific inverse fit
+        # --------------------------
+
+        fit = fit_inverse_model(
+            subject_df["k_slope"],
+            subject_df["JND_measured"],
+        )
+
+        fit_rows.append(
+            {
+                "subject_id": subject,
+                **fit,
+            }
+        )
+
+        test = permutation_test_inverse(
+            subject_df["k_slope"],
+            subject_df["JND_measured"],
+        )
+
+        if np.isfinite(fit["B"]):
+
+            k_min = subject_df["k_slope"].min()
+            k_max = subject_df["k_slope"].max()
+
+            # Only show fit across observed k range
+            k_line = np.linspace(
+                k_min,
+                k_max,
+                300,
+            )
+
+            jnd_line = inverse_model(
+                k=k_line,
+                a=fit["a"],
+                B=fit["B"],
+            )
+
+            ax.plot(
+                k_line,
+                jnd_line,
+                color="black",
+                linewidth=1.5,
+                zorder=2,
+            )
+
+        # --------------------------
+        # Statistics
+        # --------------------------
+
+        if np.isfinite(test["p_value"]):
+
+            if test["p_value"] < 0.001:
+                p_text = "p < .001"
+            else:
+                p_text = f"p = {test['p_value']:.3f}"
+
+            stats_text = (
+                f"B = {fit['B']:.2f}\n"
+                f"{p_text}\n"
+                f"R² = {fit['r2']:.2f}"
+            )
+
+        else:
+            stats_text = (
+                "B = NA\n"
+                "p = NA\n"
+                "R² = NA"
+            )
+
+        ax.text(
+            0.96,
+            0.95,
+            stats_text,
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            fontsize=9,
+        )
+
+        ax.set_title(f"subject_id = {subject}")
+
+        # ax.set_xlim(
+        #     0,
+        #     global_k_max * 1.05,
+        # )
+        #
+        # ax.set_ylim(
+        #     0,
+        #     global_jnd_max * 1.08,
+        # )
+
+    # ------------------------------------------------------------
+    # Remove unused panels
+    # ------------------------------------------------------------
+
+    for ax in axes_flat[n_subjects:]:
+        ax.set_visible(False)
+
+    # ------------------------------------------------------------
+    # Shared labels
+    # ------------------------------------------------------------
+
+    fig.supxlabel("k slope (dB/degree)")
+    fig.supylabel("Measured JND (degrees)")
+
+    # One shared cue legend
+    handles = [
+        plt.Line2D(
+            [],
+            [],
+            marker="o",
+            linestyle="",
+            color=CUE_COLORS[cue],
+            label=cue,
+        )
+        for cue in CUE_ORDER
+        if cue in [c.upper() for c in cues]
+    ]
+
+    fig.legend(
+        handles=handles,
+        title="Cue",
+        loc="lower right",
+        bbox_to_anchor=(0.99, 0.99),
+    )
+
+    fig.tight_layout(
+        rect=[0.02, 0.02, 0.95, 0.98]
+    )
+
+    # ------------------------------------------------------------
+    # Save
+    # ------------------------------------------------------------
+
+    if save:
+
+        if save_path is None:
+            save_dir = derivatives_root.parent.parent / "analysis" / "figures"
+            save_dir.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            save_path = (
+                save_dir
+                / "jnd_vs_k_by_subject.png"
+            )
+
+        fig.savefig(
+            save_path,
+            dpi=300,
+            bbox_inches="tight",
+        )
+
+        print(
+            f"Saved JND vs k plot to: {save_path}"
+        )
+
+    fit_summary = pd.DataFrame(fit_rows)
+
+    return fig, axes, table, fit_summary
+
+
 def make_jnd_model_table(
     subject_id=None,
     derivatives_root="data/psychometrics",
@@ -736,7 +1310,7 @@ def make_jnd_model_table(
             "JND_measured",
             "k_slope",
             "inv_k",
-            "sigma_y",
+            # "sigma_y",
         ]
     )
 

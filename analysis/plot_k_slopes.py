@@ -90,6 +90,7 @@ def filter_k_slope_tables(
         "reference_center_frequency",
         "comparison_center_frequency",
         "k_slope",
+        "sigma_y",
         "n_points",
     ]
 
@@ -161,6 +162,8 @@ def plot_k_slopes(
         if freq not in ordered_freqs:
             ordered_freqs.append(freq)
 
+    ordered_freqs = sorted(ordered_freqs)
+
     n_freqs = len(ordered_freqs)
 
     # Global x/y limits
@@ -177,6 +180,15 @@ def plot_k_slopes(
         global_y_max = 5
     else:
         global_y_max = points["PSE"].max()
+
+        if "sigma_y" in slopes.columns:
+            max_sigma = pd.to_numeric(
+                slopes["sigma_y"],
+                errors="coerce",
+            ).max()
+
+            if np.isfinite(max_sigma):
+                global_y_max += max_sigma
 
     global_x_limit = global_x_max * 1.05
     global_y_limit = global_y_max * 1.05
@@ -230,11 +242,42 @@ def plot_k_slopes(
             x = cue_points["reference_angle_folded"].to_numpy(dtype=float)
             y = cue_points["PSE"].to_numpy(dtype=float)
 
+            # ------------------------------------------------------------
+            # Cue-specific sigma_y
+            # ------------------------------------------------------------
+
+            if (
+                    not cue_slopes.empty
+                    and "sigma_y" in cue_slopes.columns
+            ):
+                sigma_y = cue_slopes["sigma_y"].iloc[0]
+            else:
+                sigma_y = np.nan
+
+            # ------------------------------------------------------------
+            # ± sigma_y around each PSE point
+            # ------------------------------------------------------------
+
+            if np.isfinite(sigma_y):
+                ax.errorbar(
+                    x,
+                    y,
+                    yerr=sigma_y,
+                    fmt="none",
+                    ecolor=color,
+                    elinewidth=1.2,
+                    alpha=0.45,
+                    capsize=0,
+                    zorder=1,
+                )
+
+            # PSE point itself
             ax.scatter(
                 x,
                 y,
                 color=color,
                 alpha=0.9,
+                zorder=2,
             )
 
             if cue_slopes.empty:
@@ -245,9 +288,12 @@ def plot_k_slopes(
                 n_points = cue_slopes["n_points"].iloc[0]
 
             if np.isfinite(k):
-                k_text_lines.append((cue, f"{k:.2f}", color))
-            else:
-                k_text_lines.append((cue, "None", color))
+                if np.isfinite(sigma_y):
+                    text = f"k={k:.2f}, σ={sigma_y:.2f}"
+                else:
+                    text = f"k={k:.2f}"
+
+                k_text_lines.append((cue, text, color))
 
             if np.isfinite(k) and n_points >= min_points_for_line:
 
@@ -272,7 +318,7 @@ def plot_k_slopes(
             ax.text(
                 0.03,
                 0.97 - line_idx * 0.10,
-                f"k={k_text}",
+                k_text,
                 transform=ax.transAxes,
                 ha="left",
                 va="top",
