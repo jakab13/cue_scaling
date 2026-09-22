@@ -1,9 +1,5 @@
 from frequency_alignment.run_experiment import (
-    run_low_ild,
-    run_low_itd,
-    run_combined,
-    run_high_ild,
-    run_all,
+    run_alignment_block,
     fit_psychometrics,
     plot_results,
 )
@@ -13,29 +9,81 @@ from frequency_alignment.run_experiment import (
 # PARTICIPANT
 # ============================================================
 
-SUBJECT_ID = "jakab_test9"
+SUBJECT_ID = "jakab_test_10"
 
 
 # ============================================================
 # EXPERIMENT
 # ============================================================
 
-run_low_ild(SUBJECT_ID)
+# Low-frequency ILD
 
-run_low_itd(SUBJECT_ID)
+run_alignment_block(
+    subject_id=SUBJECT_ID,
+    cue="ILD",
+    reference_frequency=1400,
+    comparison_frequency=1000,
+    reference_angle=20,
+    comparison_angles=[
+        -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40,
+    ],
+    n_repetitions=8,
+)
 
-run_combined(SUBJECT_ID)
 
-run_high_ild(SUBJECT_ID)
+# Low-frequency ITD
 
-# Or:
-# run_all(SUBJECT_ID)
+run_alignment_block(
+    subject_id=SUBJECT_ID,
+    cue="ITD",
+    reference_frequency=1400,
+    comparison_frequency=1000,
+    reference_angle=20,
+    comparison_angles=[
+        -5, 0, 5, 10, 15, 20, 25,
+    ],
+    n_repetitions=8,
+)
+
+
+# Combined cues
+
+run_alignment_block(
+    subject_id=SUBJECT_ID,
+    cue="COMBINED",
+    reference_frequency=1400,
+    comparison_frequency=1000,
+    reference_angle=20,
+    comparison_angles=[
+        -10, -5, 0, 5, 10, 15, 20,
+    ],
+    n_repetitions=8,
+)
+
+
+# High-frequency ILD
+
+run_alignment_block(
+    subject_id=SUBJECT_ID,
+    cue="ILD",
+    reference_frequency=1400,
+    comparison_frequency=4000,
+    reference_angle=20,
+    comparison_angles=[
+        -10, -5, 0, 5, 10, 15, 20,
+    ],
+    n_repetitions=8,
+)
 
 
 # ============================================================
 # ANALYSIS
 # ============================================================
 
-fit_psychometrics(SUBJECT_ID)
+fit_psychometrics(
+    SUBJECT_ID
+)
 
-plot_results(SUBJECT_ID)
+plot_results(
+    SUBJECT_ID
+)

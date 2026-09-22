@@ -16,10 +16,7 @@ from analysis.fit_psychometrics import (
 )
 
 from frequency_alignment.builders import (
-    make_low_ild_block,
-    make_low_itd_block,
-    make_combined_block,
-    make_high_ild_block,
+    make_alignment_condition
 )
 
 from stimuli.sound_handler import (
@@ -705,144 +702,49 @@ def _calculate_predictions(
             ),
     }
 
-# ============================================================
-# PUBLIC EXPERIMENT FUNCTIONS
-# ============================================================
 
-def run_low_ild(
+def run_alignment_block(
     subject_id,
+    cue,
+    reference_frequency,
+    comparison_frequency,
+    reference_angle,
+    comparison_angles,
     n_repetitions=DEFAULT_N_REPETITIONS,
 ):
     """
-    Run the lower-frequency ILD alignment block.
-
-    Reference:
-        1000 Hz, ILD, 12°
-
-    Comparison:
-        1400 Hz, ILD
+    Run one frequency-alignment block.
     """
 
-    conditions = make_low_ild_block(
+    cue = cue.upper()
+
+    condition_id = (
+        f"{cue.lower()}_"
+        f"{reference_frequency}to{comparison_frequency}_"
+        f"ref{reference_angle}"
+    )
+
+    block_name = (
+        f"{cue}: "
+        f"{reference_frequency} → "
+        f"{comparison_frequency} Hz"
+    )
+
+    condition = make_alignment_condition(
+        condition_id=condition_id,
+        reference_frequency=reference_frequency,
+        comparison_frequency=comparison_frequency,
+        cue=cue,
+        reference_angle=reference_angle,
+        comparison_angles=comparison_angles,
         n_repetitions=n_repetitions,
     )
 
     _run_block(
         subject_id=subject_id,
-        conditions=conditions,
-        block_name="Low-frequency ILD",
+        conditions=[condition],
+        block_name=block_name,
     )
-
-def run_low_itd(
-    subject_id,
-    n_repetitions=DEFAULT_N_REPETITIONS,
-):
-    """
-    Run the lower-frequency ILD alignment block.
-
-    Reference:
-        1000 Hz, ILD, 12°
-
-    Comparison:
-        1400 Hz, ILD
-    """
-
-    conditions = make_low_itd_block(
-        n_repetitions=n_repetitions,
-    )
-
-    _run_block(
-        subject_id=subject_id,
-        conditions=conditions,
-        block_name="Low-frequency ITD",
-    )
-
-
-def run_combined(
-    subject_id,
-    n_repetitions=DEFAULT_N_REPETITIONS,
-):
-    """
-    Run the combined-cue alignment block.
-
-    Reference:
-        1000 Hz, COMBINED, 12°
-
-    Comparison:
-        1400 Hz, COMBINED
-    """
-
-    conditions = make_combined_block(
-        n_repetitions=n_repetitions,
-    )
-
-    print(conditions)
-
-    _run_block(
-        subject_id=subject_id,
-        conditions=conditions,
-        block_name="Combined cues",
-    )
-
-
-def run_high_ild(
-    subject_id,
-    n_repetitions=DEFAULT_N_REPETITIONS,
-):
-    """
-    Run the higher-frequency ILD alignment block.
-
-    Reference:
-        6000 Hz, ILD, 12°
-
-    Comparison:
-        4000 Hz, ILD
-    """
-
-    conditions = make_high_ild_block(
-        n_repetitions=n_repetitions,
-    )
-
-    _run_block(
-        subject_id=subject_id,
-        conditions=conditions,
-        block_name="High-frequency ILD",
-    )
-
-
-def run_all(
-    subject_id,
-    n_repetitions=DEFAULT_N_REPETITIONS,
-):
-    """
-    Run all three frequency-alignment blocks.
-    """
-
-    run_low_ild(
-        subject_id=subject_id,
-        n_repetitions=n_repetitions,
-    )
-
-    input(
-        "\nLow-frequency ILD block finished. "
-        "Press Enter when ready for the next block..."
-    )
-
-    run_combined(
-        subject_id=subject_id,
-        n_repetitions=n_repetitions,
-    )
-
-    input(
-        "\nCombined-cue block finished. "
-        "Press Enter when ready for the next block..."
-    )
-
-    run_high_ild(
-        subject_id=subject_id,
-        n_repetitions=n_repetitions,
-    )
-
 
 # ============================================================
 # PUBLIC ANALYSIS FUNCTIONS
