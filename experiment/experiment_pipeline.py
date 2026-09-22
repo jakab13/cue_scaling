@@ -14,8 +14,8 @@ def run_experiment_from_conditions(
     save_root="data/raw",
     randomize=True,
     seed=None,
-    left_key="1",
-    right_key="2",
+    left_key="4",
+    right_key="6",
     analysis_role="main",
     include_in_analysis=True,
 ):

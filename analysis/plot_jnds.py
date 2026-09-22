@@ -187,6 +187,8 @@ def plot_jnds(
         if freq not in ordered_freqs:
             ordered_freqs.append(freq)
 
+    ordered_freqs = sorted(ordered_freqs)
+
     ordered_cues = [cue for cue in CUE_ORDER if cue in [c.upper() for c in cues]]
 
     n_rows = len(ordered_cues)

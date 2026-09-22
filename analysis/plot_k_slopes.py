@@ -161,6 +161,8 @@ def plot_k_slopes(
         if freq not in ordered_freqs:
             ordered_freqs.append(freq)
 
+    ordered_freqs = sorted(ordered_freqs)
+
     n_freqs = len(ordered_freqs)
 
     # Global x/y limits

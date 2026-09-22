@@ -6,6 +6,8 @@ import random
 import time
 from copy import deepcopy
 
+import slab
+
 from stimuli.sound_handler import generate_stim, apply_cue
 
 
@@ -170,7 +172,10 @@ def play_2afc_trial(ordered_sounds, isi=0.2):
 
     first_sound, second_sound = ordered_sounds
 
-    first_sound.play()
-    time.sleep(isi)
+    silence = slab.Binaural.silence(duration=isi, samplerate=first_sound.samplerate)
 
-    second_sound.play()
+    end_silence = slab.Binaural.silence(duration=isi, samplerate=first_sound.samplerate)
+
+    full_trial = slab.Binaural.sequence(first_sound, silence, second_sound, end_silence)
+
+    full_trial.play()

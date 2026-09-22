@@ -42,6 +42,11 @@ DEFAULT_K_ESTIMATES = {
         1000: 0.25,
         1200: 0.205,
         1400: 0.14,
+        1600: 0.14,
+        1800: 0.14,
+        2000: 0.14,
+        2200: 0.14,
+        2400: 0.14,
     },
     "ITD": {
         400: 0.16,
@@ -50,6 +55,11 @@ DEFAULT_K_ESTIMATES = {
         1000: 0.13,
         1200: 0.105,
         1400: 0.065,
+        1600: 0.065,
+        1800: 0.065,
+        2000: 0.065,
+        2200: 0.065,
+        2400: 0.065,
     },
     "COMBINED": {
         400: 0.40,
@@ -58,6 +68,11 @@ DEFAULT_K_ESTIMATES = {
         1000: 0.48,
         1200: 0.385,
         1400: 0.25,
+        1600: 0.25,
+        1800: 0.25,
+        2000: 0.25,
+        2200: 0.25,
+        2400: 0.25,
     },
 }
 
@@ -119,66 +134,66 @@ def get_k_estimate(
     comparison_cue = comparison_cue.upper()
     frequency = float(frequency)
 
-    # ------------------------------------------------------------
-    # 1. Manual estimate
-    # ------------------------------------------------------------
-    if k_estimate is not None:
-        return float(k_estimate), "manual"
-
-    # ------------------------------------------------------------
-    # 2–3. Previous estimates
-    # ------------------------------------------------------------
-    slopes = load_k_slopes(derivatives_root)
-
-    if not slopes.empty:
-        slopes = slopes.copy()
-
-        slopes["reference_cue"] = slopes["reference_cue"].astype(str).str.upper()
-        slopes["comparison_cue"] = slopes["comparison_cue"].astype(str).str.upper()
-        slopes["reference_center_frequency"] = pd.to_numeric(
-            slopes["reference_center_frequency"],
-            errors="coerce",
-        )
-        slopes["k_slope"] = pd.to_numeric(
-            slopes["k_slope"],
-            errors="coerce",
-        )
-
-        df = slopes[
-            (slopes["reference_cue"] == reference_cue)
-            & (slopes["comparison_cue"] == comparison_cue)
-            & (slopes["reference_center_frequency"] == frequency)
-        ].copy()
-
-        # 2. Subject-specific estimate
-        if subject_id is not None and not df.empty:
-            subject_df = df[df["subject_id"].astype(str) == str(subject_id)]
-
-            if not subject_df.empty:
-                k = subject_df["k_slope"].dropna().iloc[-1]
-                return float(k), "previous subject estimate"
-
-        # 3. Pooled median estimate
-        if not df.empty:
-            k = df["k_slope"].dropna().median()
-
-            if np.isfinite(k):
-                return float(k), "previous pooled estimate"
-
-    # ------------------------------------------------------------
-    # 4. ILD fallback from actual ILS file, if available
-    # ------------------------------------------------------------
-    if reference_cue == "ILD":
-        try:
-            k = ild_slope_at_zero_fit(
-                freq_hz=frequency,
-            )
-            return float(k), "ILD slope from ILS"
-        except Exception as e:
-            print(
-                f"Could not estimate ILD slope from ILS: {e}. "
-                "Using built-in fallback estimate instead."
-            )
+    # # ------------------------------------------------------------
+    # # 1. Manual estimate
+    # # ------------------------------------------------------------
+    # if k_estimate is not None:
+    #     return float(k_estimate), "manual"
+    #
+    # # ------------------------------------------------------------
+    # # 2–3. Previous estimates
+    # # ------------------------------------------------------------
+    # slopes = load_k_slopes(derivatives_root)
+    #
+    # if not slopes.empty:
+    #     slopes = slopes.copy()
+    #
+    #     slopes["reference_cue"] = slopes["reference_cue"].astype(str).str.upper()
+    #     slopes["comparison_cue"] = slopes["comparison_cue"].astype(str).str.upper()
+    #     slopes["reference_center_frequency"] = pd.to_numeric(
+    #         slopes["reference_center_frequency"],
+    #         errors="coerce",
+    #     )
+    #     slopes["k_slope"] = pd.to_numeric(
+    #         slopes["k_slope"],
+    #         errors="coerce",
+    #     )
+    #
+    #     df = slopes[
+    #         (slopes["reference_cue"] == reference_cue)
+    #         & (slopes["comparison_cue"] == comparison_cue)
+    #         & (slopes["reference_center_frequency"] == frequency)
+    #     ].copy()
+    #
+    #     # 2. Subject-specific estimate
+    #     if subject_id is not None and not df.empty:
+    #         subject_df = df[df["subject_id"].astype(str) == str(subject_id)]
+    #
+    #         if not subject_df.empty:
+    #             k = subject_df["k_slope"].dropna().iloc[-1]
+    #             return float(k), "previous subject estimate"
+    #
+    #     # 3. Pooled median estimate
+    #     if not df.empty:
+    #         k = df["k_slope"].dropna().median()
+    #
+    #         if np.isfinite(k):
+    #             return float(k), "previous pooled estimate"
+    #
+    # # ------------------------------------------------------------
+    # # 4. ILD fallback from actual ILS file, if available
+    # # ------------------------------------------------------------
+    # if reference_cue == "ILD":
+    #     try:
+    #         k = ild_slope_at_zero_fit(
+    #             freq_hz=frequency,
+    #         )
+    #         return float(k), "ILD slope from ILS"
+    #     except Exception as e:
+    #         print(
+    #             f"Could not estimate ILD slope from ILS: {e}. "
+    #             "Using built-in fallback estimate instead."
+    #         )
 
     # ------------------------------------------------------------
     # 5. Built-in fallback estimate

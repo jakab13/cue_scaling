@@ -627,7 +627,10 @@ def generate_stim(
     )
 
     # Ramp stimulus to avoid clicks
-    sound = sound.ramp(duration=0.01)
+    if center_frequency == 200:
+        sound = sound.ramp(duration=0.04)
+    else:
+        sound = sound.ramp(duration=0.01)
 
     # Set level
     sound.level = level
